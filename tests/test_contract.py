@@ -48,3 +48,40 @@ def test_duplicate_cancellation_is_idempotent():
     p=new_partner('P','Z'); p.update(active_order_ids=['O1'],workload_minutes=9,minutes_by_order={'O1':9})
     once=process_cancellation(p,'O1','C1'); twice=process_cancellation(once,'O1','C1')
     assert twice['workload_minutes']==0 and twice['processed_cancellation_ids']==['C1']
+
+
+def test_malformed_order_and_partner_records_are_safe():
+    result = assign_order(None, [None, {}], {})
+    assert result['partner_id'] is None
+    assert result['reason'] == 'invalid order record'
+
+
+def test_malformed_travel_container_is_reported_without_crashing():
+    result = assign_order(new_order('O','R','D'), [new_partner('P','Z')], None)
+    assert result['partner_id'] is None
+    assert result['reason'] == 'invalid travel data'
+
+
+def test_invalid_active_order_list_does_not_crash_or_assign():
+    partner = new_partner('P','Z')
+    partner['active_order_ids'] = None
+    result = assign_order(new_order('O','R','D'), [partner], {('Z','R'): 1, ('R','D'): 1})
+    assert result['partner_id'] is None
+
+
+def test_cancellation_does_not_mutate_input_partner():
+    partner = new_partner('P','Z')
+    partner.update(active_order_ids=['O1'], workload_minutes=9, minutes_by_order={'O1': 9})
+    result = process_cancellation(partner, 'O1', 'C1')
+    assert partner['active_order_ids'] == ['O1']
+    assert partner['workload_minutes'] == 9
+    assert result['active_order_ids'] == []
+    assert result['workload_minutes'] == 0
+
+
+def test_unrepresentably_large_time_values_are_rejected_safely():
+    order = new_order('O','R','D',10**1000)
+    partner = new_partner('P','Z')
+    result = estimate_eta(order, partner, {('Z','R'): 1, ('R','D'): 1})
+    assert result['eligible'] is False
+    assert result['eta_minutes'] is None

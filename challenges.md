@@ -1,23 +1,33 @@
-# challenges.md - COMPULSORY submission
+# Challenges and debugging
 
-This file is mandatory and worth 5 marks. Describe your actual experience honestly. Do not invent difficulties to fill the page.
+## Hardest case: cancellation replay
 
-## 1. Challenge or confusing behaviour
-What candidate-selection, ETA, capacity, missing-data, tie-breaking, or cancellation case was difficult to understand?
+The starter cancellation function appended each event ID but never checked
+whether that ID had already been processed. The key regression assertion
+requires a duplicate cancellation to leave `processed_cancellation_ids` as
+`["C1"]` and workload at zero. The broader parametrized acceptance tests
+repeat cancellations across several workload values.
 
-## 2. Evidence
-Summarize the relevant assertion, log, output, or minimal reproducible example.
+## Investigation and resolution
 
-## 3. What I tried
-List debugging steps or experiments you actually performed and what each one showed.
+I traced `process_cancellation` and its caller-facing dictionary state in
+`models.py`, then read the idempotency assertions in
+`tests/test_contract.py` and `tests/test_acceptance_matrix.py`. The existing
+`active_order_ids` check prevented a second workload release for the same
+order, but it did not prevent duplicate event IDs from being recorded. The
+updated function returns without applying an event already present in
+`processed_cancellation_ids`; it also copies the partner mapping so callers'
+input state is not mutated.
 
-## 4. Resolution
-What was the root cause? What did you change, and why did it address the cause rather than hide the symptom?
+The regression test `test_cancellation_does_not_mutate_input_partner` confirms
+the input and returned state are separate. The contract and parameterized
+cancellation tests passed in the local run.
 
-## 5. Proof and regression prevention
-Which test(s) demonstrate the fix? What related case might still break?
+## Environment limitation
 
-## 6. Unresolved challenge or next step
-State remaining limitations and how you would investigate them next.
-
-If you did not encounter a major blocker, say so honestly and describe the hardest edge case you deliberately tested and what it taught you. Do not manufacture a story.
+The first baseline attempt could not start because the system Python had no
+pytest installed. After installing project requirements in a local virtual
+environment, the full suite passed, but the only available interpreter was
+Python 3.9.6. The repository requires Python 3.10+, so repeat the suite under
+the supported version before treating compatibility as confirmed. No CI
+workflow files were present in the checkout to provide that additional run.
